@@ -14,7 +14,7 @@
 <body>
 
 <h2>ID Name Extractor</h2>
-<p>Select an image of an ID card. The app will extract only the Name field.</p>
+<p>Select an image of an ID card. This will extract only the Name field.</p>
 <input type="file" id="imageUpload" accept="image/*"><br>
 <button onclick="extractName()">Extract Name</button>
 
@@ -36,26 +36,32 @@
       try {
         const result = await Tesseract.recognize(reader.result, 'eng', {
           logger: m => output.innerText = "Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
+        }, { 
+          // Config for better layout analysis
+          langPath: '', 
+          tessedit_pageseg_mode: '6' 
         });
 
         const text = result.data.text;
-        const name = extractField(text, "Name");
+        console.log("OCR TEXT:\n", text);
 
+        const name = extractField(text, "Name");
         output.innerText = name ? "Extracted Name: " + name : "Name not found.";
       } catch (err) {
         output.innerText = "OCR Error: " + (err.message || "Unknown error");
         console.error(err);
       }
     };
+
     reader.readAsDataURL(file);
   }
 
   function extractField(text, label) {
-    const regex = new RegExp(label + "\\s*:?\\s*(.+)", "i");
     const lines = text.split('\n');
     for (let line of lines) {
-      const match = line.match(regex);
-      if (match) return match[1].trim();
+      if (line.toLowerCase().includes(label.toLowerCase())) {
+        return line.split(':').pop().trim();
+      }
     }
     return null;
   }
