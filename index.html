@@ -3,43 +3,36 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor using Tesseract + ChatGPT</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <title>ChatGPT Vision Name v4</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; max-width: 700px; margin: auto; }
-    textarea, input, button { width: 100%; margin-top: 10px; font-family: monospace; }
+    input, button, textarea { width: 100%; margin-top: 10px; font-family: monospace; }
     textarea { height: 150px; }
-    .section { margin-bottom: 25px; }
+    .section { margin-bottom: 20px; }
   </style>
 </head>
 <body>
 
-<h2>ID Name Extractor (Tesseract.js + ChatGPT)</h2>
+<h2>Extract Name from ID Card (GPT-4 Vision)</h2>
 
 <div class="section">
-  <label>OpenAI API Key:</label>
+  <label>OpenAI API Key (GPT-4 Access Required):</label>
   <input type="password" id="openaiKey" placeholder="sk-..." onchange="saveKey()">
 </div>
 
 <div class="section">
-  <label>Upload ID Card Image:</label>
+  <label>Select an ID card image:</label>
   <input type="file" id="fileInput" accept="image/*">
 </div>
 
-<button onclick="extractName()">Extract Name</button>
+<button onclick="sendToGPT()">Extract Name</button>
 
 <div class="section">
-  <h4>Full OCR Text</h4>
-  <textarea id="ocrText" readonly></textarea>
-</div>
-
-<div class="section">
-  <h4>ChatGPT Extracted Name</h4>
-  <textarea id="chatgptResponse" readonly></textarea>
+  <h4>Response from GPT-4 Vision</h4>
+  <textarea id="gptResponse" readonly></textarea>
 </div>
 
 <script>
-  // Load saved OpenAI key on startup
   document.addEventListener("DOMContentLoaded", () => {
     const savedKey = localStorage.getItem("openai_api_key");
     if (savedKey) document.getElementById("openaiKey").value = savedKey;
@@ -50,51 +43,55 @@
     if (key.startsWith("sk-")) localStorage.setItem("openai_api_key", key);
   }
 
-  async function extractName() {
-    const openaiKey = document.getElementById('openaiKey').value.trim();
-    const file = document.getElementById('fileInput').files[0];
-    const ocrBox = document.getElementById('ocrText');
-    const responseBox = document.getElementById('chatgptResponse');
+  async function sendToGPT() {
+    const apiKey = document.getElementById("openaiKey").value.trim();
+    const file = document.getElementById("fileInput").files[0];
+    const responseBox = document.getElementById("gptResponse");
 
-    if (!file || !openaiKey) {
-      alert("Please enter your OpenAI API key and select an image.");
+    if (!file || !apiKey) {
+      alert("Please provide your API key and select an image.");
       return;
     }
 
-    ocrBox.value = "Running OCR...";
-    responseBox.value = "";
+    responseBox.value = "Encoding image and sending to GPT-4 Vision...";
 
     const reader = new FileReader();
     reader.onload = async () => {
+      const base64Image = reader.result.split(',')[1];
+
+      const body = {
+        model: "gpt-4-vision-preview",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "This is a Maldivian ID card. What is the full name of the person on this ID? Only return the name." },
+            {
+              type: "image_url",
+              image_url: {
+                detail: "low",
+                url: `data:${file.type};base64,${base64Image}`
+              }
+            }
+          ]
+        }],
+        max_tokens: 100
+      };
+
       try {
-        const result = await Tesseract.recognize(reader.result, 'eng', {
-          logger: m => ocrBox.value = "OCR Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
-        });
-
-        const text = result.data.text;
-        ocrBox.value = text;
-
-        const chatRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${openaiKey}`
+            "Authorization": `Bearer ${apiKey}`
           },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [
-              { role: "system", content: "You are an assistant that extracts the full name of the person from OCR text of a Maldivian ID card." },
-              { role: "user", content: "Here is the OCR text:\n\n" + text + "\n\nOnly reply with the full name of the person, nothing else." }
-            ]
-          })
+          body: JSON.stringify(body)
         });
 
-        const chatData = await chatRes.json();
-        const name = chatData.choices?.[0]?.message?.content || "No response.";
-        responseBox.value = name;
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content || "No response from GPT.";
+        responseBox.value = reply;
       } catch (err) {
-        ocrBox.value = "OCR or API error.";
-        responseBox.value = err.message;
+        responseBox.value = "Error: " + err.message;
         console.error(err);
       }
     };
