@@ -1,35 +1,64 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Test OCR</title>
+  <title>ID Name Extractor (Only Name)</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    input, button { margin: 10px 0; }
+    .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
+    img { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; }
+  </style>
 </head>
 <body>
 
-<h2>Quick OCR Test</h2>
-<input type="file" id="upload" accept="image/*">
-<pre id="output">Waiting...</pre>
+<h2>ID Name Extractor</h2>
+<p>Select an image of an ID card. The app will extract only the Name field.</p>
+<input type="file" id="imageUpload" accept="image/*"><br>
+<button onclick="extractName()">Extract Name</button>
+
+<div class="result" id="output"></div>
 
 <script>
-document.getElementById('upload').addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  const reader = new FileReader();
-
-  reader.onload = async () => {
-    try {
-      const result = await Tesseract.recognize(reader.result, 'eng', {
-        logger: m => console.log(m)
-      });
-      document.getElementById('output').innerText = result.data.text;
-    } catch (e) {
-      document.getElementById('output').innerText = "OCR error: " + (e.message || "Unknown error");
-      console.error(e);
+  async function extractName() {
+    const file = document.getElementById('imageUpload').files[0];
+    const output = document.getElementById('output');
+    if (!file) {
+      output.innerText = "Please select an image.";
+      return;
     }
-  };
 
-  reader.readAsDataURL(file);
-});
+    output.innerText = "Processing...";
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const result = await Tesseract.recognize(reader.result, 'eng', {
+          logger: m => output.innerText = "Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
+        });
+
+        const text = result.data.text;
+        const name = extractField(text, "Name");
+
+        output.innerText = name ? "Extracted Name: " + name : "Name not found.";
+      } catch (err) {
+        output.innerText = "OCR Error: " + (err.message || "Unknown error");
+        console.error(err);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function extractField(text, label) {
+    const regex = new RegExp(label + "\\s*:?\\s*(.+)", "i");
+    const lines = text.split('\n');
+    for (let line of lines) {
+      const match = line.match(regex);
+      if (match) return match[1].trim();
+    }
+    return null;
+  }
 </script>
 
 </body>
