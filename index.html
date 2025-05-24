@@ -2,18 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (v3)</title>
+  <title>ID Name Extractor (v3.1)</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
   <style>
-    body { font-family: Arial; padding: 20px; max-width: 500px; margin: auto; }
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
     input, button { margin: 10px 0; }
-    .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
+    .result { margin-top: 20px; font-size: 1.1em; }
+    .candidates { margin-top: 10px; color: #555; font-size: 0.95em; }
   </style>
 </head>
 <body>
 
-<h2>ID Name Extractor</h2>
-<p>Select an image of an ID card. The app will try to detect a likely name automatically.</p>
+<h2>ID Name Extractor (Improved)</h2>
+<p>Select an image of an ID card. This version finds and scores up to 3 likely names.</p>
 <input type="file" id="imageUpload" accept="image/*"><br>
 <button onclick="extractName()">Extract Name</button>
 
@@ -35,37 +36,52 @@
       try {
         const result = await Tesseract.recognize(reader.result, 'eng', {
           logger: m => output.innerText = "Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
+        }, {
+          tessedit_pageseg_mode: '6'
         });
 
         const text = result.data.text;
-        console.log("FULL OCR TEXT:\n", text);
+        console.log("OCR TEXT:\n", text);
 
-        const lines = text.split('\n').map(line => line.trim()).filter(line => line);
-        const probableName = lines.find(line => isLikelyName(line));
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        const candidates = lines
+          .map(line => ({ line, score: scoreLine(line) }))
+          .filter(item => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
 
-        output.innerText = probableName
-          ? "Detected Name: " + probableName
-          : "Could not detect a clear name.";
+        if (candidates.length === 0) {
+          output.innerText = "No name-like lines found.";
+          return;
+        }
+
+        const main = candidates[0].line;
+        const others = candidates.slice(1).map(c => `• ${c.line}`).join('\n');
+        output.innerHTML = `<strong>Detected Name:</strong> ${main}<br><br>` +
+                           (others ? `<div class="candidates"><strong>Other candidates:</strong><br>${others}</div>` : "");
       } catch (err) {
         output.innerText = "OCR Error: " + (err.message || "Unknown error");
         console.error(err);
       }
     };
+
     reader.readAsDataURL(file);
   }
 
-  function isLikelyName(line) {
-    if (!line) return false;
+  function scoreLine(line) {
+    if (!line) return 0;
+    const lower = line.toLowerCase();
+    if (lower.includes("republic") || lower.includes("card") || lower.includes("number")) return 0;
+    if (/\d/.test(line)) return 0;
+
     const words = line.trim().split(/\s+/);
-    // A good name usually has 2–4 words, no numbers, and mostly alphabetic characters
-    return (
-      words.length >= 2 &&
-      words.length <= 4 &&
-      /^[A-Za-z\s]+$/.test(line) &&
-      !line.toLowerCase().includes("republic") &&
-      !line.toLowerCase().includes("card") &&
-      !line.toLowerCase().includes("number")
-    );
+    const lettersOnly = /^[A-Za-z\s]+$/.test(line);
+
+    if (words.length >= 2 && words.length <= 4 && lettersOnly) {
+      return 10 + words.length; // higher score for more name-like lines
+    }
+
+    return 0;
   }
 </script>
 
