@@ -1,104 +1,70 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (Vision API + Debug)</title>
+  <title>ID Name Extractor</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-    .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
-    textarea { width: 100%; height: 150px; margin-top: 15px; font-family: monospace; }
+    body { font-family: Arial; padding: 20px; }
+    .result { margin-top: 20px; white-space: pre-wrap; }
+    .preview { max-height: 150px; margin-top: 10px; }
   </style>
 </head>
 <body>
 
-<h2>ID Name Extractor (Google Vision + Error Log)</h2>
-<p>Select an ID card image. This tool will extract full OCR text and auto-detect the most likely name.</p>
-<input type="file" id="fileInput" accept="image/*"><br><br>
-<button onclick="extract()">Extract Name</button>
+<h2>ID Card Name Extractor</h2>
+<input type="file" id="imageUpload" accept="image/*" multiple><br><br>
+<button onclick="processImages()">Extract Names</button>
 
-<div class="result" id="output">Waiting for image...</div>
-<textarea id="fullText" readonly placeholder="Full OCR text will appear here..."></textarea>
+<div class="result" id="output"></div>
 
 <script>
-  const apiKey = "AIzaSyAchOHms5WvOp2Wd9u82uAoCOntiXNNVyI"; // Replace if needed
+  async function processImages() {
+    const files = document.getElementById('imageUpload').files;
+    const outputDiv = document.getElementById('output');
+    outputDiv.innerHTML = "Processing...";
 
-  async function extract() {
-    const file = document.getElementById('fileInput').files[0];
-    const output = document.getElementById('output');
-    const fullTextBox = document.getElementById('fullText');
+    const results = [];
 
-    if (!file) {
-      output.innerText = "Please select an image.";
-      return;
+    for (const file of files) {
+      const image = await readFile(file);
+      const result = await Tesseract.recognize(image, 'eng');
+      const text = result.data.text;
+
+      // Extract name
+      const fullName = extractLine(text, "Name");
+      const commonName = extractLine(text, "Common Name");
+
+      results.push({
+        file: file.name,
+        full_name: fullName,
+        common_name: commonName
+      });
     }
 
-    output.innerText = "Processing...";
-
-    const reader = new FileReader();
-    reader.onload = async function () {
-      const base64 = reader.result.replace(/^data:image\/(png|jpeg);base64,/, "");
-      const body = {
-        requests: [{
-          image: { content: base64 },
-          features: [{ type: "TEXT_DETECTION" }]
-        }]
-      };
-
-      try {
-        const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-
-        const data = await res.json();
-        console.log("Full API response:", data);
-
-        if (!data.responses || !data.responses[0]) {
-          output.innerText = "API Error: No response from Vision API.";
-          return;
-        }
-
-        if (data.responses[0].error || data.error) {
-          const msg = JSON.stringify(data.responses[0].error || data.error, null, 2);
-          output.innerText = "API Error: " + msg;
-          return;
-        }
-
-        const text = data.responses[0].fullTextAnnotation?.text || "No text detected.";
-        fullTextBox.value = text;
-
-        const nameLine = findNameLine(text);
-        output.innerText = nameLine
-          ? `Extracted Name: ${nameLine}`
-          : "Could not find a clean name line.";
-
-      } catch (err) {
-        output.innerText = "Fetch Error: " + (err.message || "Unknown error");
-        console.error(err);
-      }
-    };
-
-    reader.readAsDataURL(file);
+    // Display results
+    outputDiv.innerHTML = results.map(r =>
+      `File: ${r.file}\nFull Name: ${r.full_name}\nCommon Name: ${r.common_name || 'N/A'}\n\n`
+    ).join('');
   }
 
-  function findNameLine(text) {
-    const lines = text.split('\n').map(line => line.trim());
-
+  function extractLine(text, label) {
+    const regex = new RegExp(label + "\\s*:?\\s*(.+)", "i");
+    const lines = text.split('\n');
     for (let line of lines) {
-      if (/^(Name|Full Name|NAME|FULL NAME)/i.test(line)) {
-        return line.replace(/^(Name|Full Name|NAME|FULL NAME)\s*[:\-]?\s*/i, '');
-      }
+      const match = line.match(regex);
+      if (match) return match[1].trim();
     }
+    return null;
+  }
 
-    return lines.find(line =>
-      /^[A-Za-z ]+$/.test(line) &&
-      line.split(" ").length >= 2 &&
-      line.split(" ").length <= 4 &&
-      !line.toLowerCase().includes("republic") &&
-      !line.toLowerCase().includes("card") &&
-      !line.toLowerCase().includes("number")
-    );
+  function readFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = e => reject(e);
+      reader.readAsDataURL(file);
+    });
   }
 </script>
 
