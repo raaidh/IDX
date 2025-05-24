@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test OCR</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+<h2>Quick OCR Test</h2>
+<input type="file" id="upload" accept="image/*">
+<pre id="output">Waiting...</pre>
+
+<script>
+document.getElementById('upload').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    try {
+      const result = await Tesseract.recognize(reader.result, 'eng', {
+        logger: m => console.log(m)
+      });
+      document.getElementById('output').innerText = result.data.text;
+    } catch (e) {
+      document.getElementById('output').innerText = "OCR error: " + (e.message || "Unknown error");
+      console.error(e);
+    }
+  };
+
+  reader.readAsDataURL(file);
+});
+</script>
+
+</body>
+</html>
