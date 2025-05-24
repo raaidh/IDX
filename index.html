@@ -2,17 +2,17 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (Final Version)</title>
+  <title>ID Name Extractor (Google Vision with Fixes)</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
     .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
-    textarea { width: 100%; height: 150px; margin-top: 15px; }
+    textarea { width: 100%; height: 150px; margin-top: 15px; font-family: monospace; }
   </style>
 </head>
 <body>
 
 <h2>ID Name Extractor (Google Vision Final)</h2>
-<p>Select your ID image. This version will extract and display all OCR text and attempt to find the best matching line for name.</p>
+<p>Select your ID image. This version shows full OCR text and extracts a likely name.</p>
 <input type="file" id="fileInput" accept="image/*"><br><br>
 <button onclick="extract()">Extract Name</button>
 
@@ -20,69 +20,80 @@
 <textarea id="fullText" readonly placeholder="Full OCR text will appear here..."></textarea>
 
 <script>
-const apiKey = "AIzaSyAchOHms5WvOp2Wd9u82uAoCOntiXNNVyI";
+  const apiKey = "AIzaSyAchOHms5WvOp2Wd9u82uAoCOntiXNNVyI";
 
-async function extract() {
-  const file = document.getElementById('fileInput').files[0];
-  const output = document.getElementById('output');
-  const fullTextBox = document.getElementById('fullText');
+  async function extract() {
+    const file = document.getElementById('fileInput').files[0];
+    const output = document.getElementById('output');
+    const fullTextBox = document.getElementById('fullText');
 
-  if (!file) {
-    output.innerText = "Please select an image.";
-    return;
-  }
+    if (!file) {
+      output.innerText = "Please select an image.";
+      return;
+    }
 
-  output.innerText = "Processing...";
+    output.innerText = "Processing...";
 
-  const reader = new FileReader();
-  reader.onload = async function () {
-    const base64 = reader.result.replace(/^data:image\/(png|jpeg);base64,/, "");
-    const body = {
-      requests: [{
-        image: { content: base64 },
-        features: [{ type: "TEXT_DETECTION" }]
-      }]
+    const reader = new FileReader();
+    reader.onload = async function () {
+      const base64 = reader.result.replace(/^data:image\/(png|jpeg);base64,/, "");
+      const body = {
+        requests: [{
+          image: { content: base64 },
+          features: [{ type: "TEXT_DETECTION" }]
+        }]
+      };
+
+      try {
+        const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+        console.log("Vision API response:", data);
+
+        if (!data.responses || !data.responses[0] || data.responses[0].error) {
+          const msg = data.responses?.[0]?.error?.message || "Unknown API error.";
+          output.innerText = "API Error: " + msg;
+          return;
+        }
+
+        const text = data.responses[0].fullTextAnnotation?.text || "No text detected.";
+        fullTextBox.value = text;
+
+        const nameLine = findNameLine(text);
+        output.innerText = nameLine ? `Extracted Name: ${nameLine}` : "Could not find a clean name line.";
+
+      } catch (err) {
+        output.innerText = "Fetch Error: " + (err.message || "Unknown error");
+        console.error(err);
+      }
     };
-
-    try {
-      const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-
-      const data = await res.json();
-      const text = data.responses[0].fullTextAnnotation?.text || "";
-      fullTextBox.value = text;
-
-      // Try keyword-based match first
-      const nameLine = findNameLine(text);
-      output.innerText = nameLine ? `Extracted Name: ${nameLine}` : "Could not find a clean name line.";
-    } catch (err) {
-      output.innerText = "Error: " + err.message;
-      console.error(err);
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function findNameLine(text) {
-  const lines = text.split('\n').map(line => line.trim());
-  for (let line of lines) {
-    if (/^(Name|Full Name|NAME|FULL NAME)/i.test(line)) {
-      return line.replace(/^(Name|Full Name|NAME|FULL NAME)\s*[:\-]?\s*/i, '');
-    }
+    reader.readAsDataURL(file);
   }
 
-  // Fallback: first good looking name-like line
-  return lines.find(line =>
-    /^[A-Za-z ]+$/.test(line) &&
-    line.split(" ").length >= 2 &&
-    !line.toLowerCase().includes("republic") &&
-    !line.toLowerCase().includes("card") &&
-    !line.toLowerCase().includes("number")
-  );
-}
+  function findNameLine(text) {
+    const lines = text.split('\n').map(line => line.trim());
+
+    // Try to match known labels
+    for (let line of lines) {
+      if (/^(Name|Full Name|NAME|FULL NAME)/i.test(line)) {
+        return line.replace(/^(Name|Full Name|NAME|FULL NAME)\s*[:\-]?\s*/i, '');
+      }
+    }
+
+    // Fallback to name-like line
+    return lines.find(line =>
+      /^[A-Za-z ]+$/.test(line) &&
+      line.split(" ").length >= 2 &&
+      line.split(" ").length <= 4 &&
+      !line.toLowerCase().includes("republic") &&
+      !line.toLowerCase().includes("card") &&
+      !line.toLowerCase().includes("number")
+    );
+  }
 </script>
 
 </body>
