@@ -2,19 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (Only Name)</title>
+  <title>ID Name Extractor (Auto-detect)</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    body { font-family: Arial; padding: 20px; max-width: 500px; margin: auto; }
     input, button { margin: 10px 0; }
     .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
-    img { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
 
 <h2>ID Name Extractor</h2>
-<p>Select an image of an ID card. This will extract only the Name field.</p>
+<p>Select an image of an ID card. The app will try to detect a likely name automatically.</p>
 <input type="file" id="imageUpload" accept="image/*"><br>
 <button onclick="extractName()">Extract Name</button>
 
@@ -36,34 +35,37 @@
       try {
         const result = await Tesseract.recognize(reader.result, 'eng', {
           logger: m => output.innerText = "Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
-        }, { 
-          // Config for better layout analysis
-          langPath: '', 
-          tessedit_pageseg_mode: '6' 
         });
 
         const text = result.data.text;
-        console.log("OCR TEXT:\n", text);
+        console.log("FULL OCR TEXT:\n", text);
 
-        const name = extractField(text, "Name");
-        output.innerText = name ? "Extracted Name: " + name : "Name not found.";
+        const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+        const probableName = lines.find(line => isLikelyName(line));
+
+        output.innerText = probableName
+          ? "Detected Name: " + probableName
+          : "Could not detect a clear name.";
       } catch (err) {
         output.innerText = "OCR Error: " + (err.message || "Unknown error");
         console.error(err);
       }
     };
-
     reader.readAsDataURL(file);
   }
 
-  function extractField(text, label) {
-    const lines = text.split('\n');
-    for (let line of lines) {
-      if (line.toLowerCase().includes(label.toLowerCase())) {
-        return line.split(':').pop().trim();
-      }
-    }
-    return null;
+  function isLikelyName(line) {
+    if (!line) return false;
+    const words = line.trim().split(/\s+/);
+    // A good name usually has 2–4 words, no numbers, and mostly alphabetic characters
+    return (
+      words.length >= 2 &&
+      words.length <= 4 &&
+      /^[A-Za-z\s]+$/.test(line) &&
+      !line.toLowerCase().includes("republic") &&
+      !line.toLowerCase().includes("card") &&
+      !line.toLowerCase().includes("number")
+    );
   }
 </script>
 
