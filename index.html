@@ -1,87 +1,105 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (Smart Mode)</title>
+  <title>ID Name Extractor using Tesseract + ChatGPT</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-    input, button { margin: 10px 0; }
-    .result { margin-top: 20px; font-size: 1.1em; }
-    .candidates { margin-top: 10px; color: #555; font-size: 0.95em; }
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 700px; margin: auto; }
+    textarea, input, button { width: 100%; margin-top: 10px; font-family: monospace; }
+    textarea { height: 150px; }
+    .section { margin-bottom: 25px; }
   </style>
 </head>
 <body>
 
-<h2>ID Name Extractor (Improved)</h2>
-<p>Select an image of an ID card. This version finds and scores up to 3 likely names.</p>
-<input type="file" id="imageUpload" accept="image/*"><br>
+<h2>ID Name Extractor (Tesseract.js + ChatGPT)</h2>
+
+<div class="section">
+  <label>OpenAI API Key:</label>
+  <input type="password" id="openaiKey" placeholder="sk-..." onchange="saveKey()">
+</div>
+
+<div class="section">
+  <label>Upload ID Card Image:</label>
+  <input type="file" id="fileInput" accept="image/*">
+</div>
+
 <button onclick="extractName()">Extract Name</button>
 
-<div class="result" id="output"></div>
+<div class="section">
+  <h4>Full OCR Text</h4>
+  <textarea id="ocrText" readonly></textarea>
+</div>
+
+<div class="section">
+  <h4>ChatGPT Extracted Name</h4>
+  <textarea id="chatgptResponse" readonly></textarea>
+</div>
 
 <script>
+  // Load saved OpenAI key on startup
+  document.addEventListener("DOMContentLoaded", () => {
+    const savedKey = localStorage.getItem("openai_api_key");
+    if (savedKey) document.getElementById("openaiKey").value = savedKey;
+  });
+
+  function saveKey() {
+    const key = document.getElementById("openaiKey").value.trim();
+    if (key.startsWith("sk-")) localStorage.setItem("openai_api_key", key);
+  }
+
   async function extractName() {
-    const file = document.getElementById('imageUpload').files[0];
-    const output = document.getElementById('output');
-    if (!file) {
-      output.innerText = "Please select an image.";
+    const openaiKey = document.getElementById('openaiKey').value.trim();
+    const file = document.getElementById('fileInput').files[0];
+    const ocrBox = document.getElementById('ocrText');
+    const responseBox = document.getElementById('chatgptResponse');
+
+    if (!file || !openaiKey) {
+      alert("Please enter your OpenAI API key and select an image.");
       return;
     }
 
-    output.innerText = "Processing...";
+    ocrBox.value = "Running OCR...";
+    responseBox.value = "";
 
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const result = await Tesseract.recognize(reader.result, 'eng', {
-          logger: m => output.innerText = "Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
-        }, {
-          tessedit_pageseg_mode: '6'
+          logger: m => ocrBox.value = "OCR Status: " + m.status + " (" + Math.round(m.progress * 100) + "%)"
         });
 
         const text = result.data.text;
-        console.log("OCR TEXT:\n", text);
+        ocrBox.value = text;
 
-        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        const candidates = lines
-          .map(line => ({ line, score: scoreLine(line) }))
-          .filter(item => item.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 3);
+        const chatRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              { role: "system", content: "You are an assistant that extracts the full name of the person from OCR text of a Maldivian ID card." },
+              { role: "user", content: "Here is the OCR text:\n\n" + text + "\n\nOnly reply with the full name of the person, nothing else." }
+            ]
+          })
+        });
 
-        if (candidates.length === 0) {
-          output.innerText = "No name-like lines found.";
-          return;
-        }
-
-        const main = candidates[0].line;
-        const others = candidates.slice(1).map(c => `• ${c.line}`).join('\n');
-        output.innerHTML = `<strong>Detected Name:</strong> ${main}<br><br>` +
-                           (others ? `<div class="candidates"><strong>Other candidates:</strong><br>${others}</div>` : "");
+        const chatData = await chatRes.json();
+        const name = chatData.choices?.[0]?.message?.content || "No response.";
+        responseBox.value = name;
       } catch (err) {
-        output.innerText = "OCR Error: " + (err.message || "Unknown error");
+        ocrBox.value = "OCR or API error.";
+        responseBox.value = err.message;
         console.error(err);
       }
     };
 
     reader.readAsDataURL(file);
-  }
-
-  function scoreLine(line) {
-    if (!line) return 0;
-    const lower = line.toLowerCase();
-    if (lower.includes("republic") || lower.includes("card") || lower.includes("number")) return 0;
-    if (/\d/.test(line)) return 0;
-
-    const words = line.trim().split(/\s+/);
-    const lettersOnly = /^[A-Za-z\s]+$/.test(line);
-
-    if (words.length >= 2 && words.length <= 4 && lettersOnly) {
-      return 10 + words.length; // higher score for more name-like lines
-    }
-
-    return 0;
   }
 </script>
 
