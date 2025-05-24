@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ID Name Extractor (Google Vision with Fixes)</title>
+  <title>ID Name Extractor (Vision API + Debug)</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
     .result { margin-top: 20px; white-space: pre-wrap; font-size: 1.1em; }
@@ -11,8 +11,8 @@
 </head>
 <body>
 
-<h2>ID Name Extractor (Google Vision Final)</h2>
-<p>Select your ID image. This version shows full OCR text and extracts a likely name.</p>
+<h2>ID Name Extractor (Google Vision + Error Log)</h2>
+<p>Select an ID card image. This tool will extract full OCR text and auto-detect the most likely name.</p>
 <input type="file" id="fileInput" accept="image/*"><br><br>
 <button onclick="extract()">Extract Name</button>
 
@@ -20,7 +20,7 @@
 <textarea id="fullText" readonly placeholder="Full OCR text will appear here..."></textarea>
 
 <script>
-  const apiKey = "AIzaSyAchOHms5WvOp2Wd9u82uAoCOntiXNNVyI";
+  const apiKey = "AIzaSyAchOHms5WvOp2Wd9u82uAoCOntiXNNVyI"; // Replace if needed
 
   async function extract() {
     const file = document.getElementById('fileInput').files[0];
@@ -52,10 +52,15 @@
         });
 
         const data = await res.json();
-        console.log("Vision API response:", data);
+        console.log("Full API response:", data);
 
-        if (!data.responses || !data.responses[0] || data.responses[0].error) {
-          const msg = data.responses?.[0]?.error?.message || "Unknown API error.";
+        if (!data.responses || !data.responses[0]) {
+          output.innerText = "API Error: No response from Vision API.";
+          return;
+        }
+
+        if (data.responses[0].error || data.error) {
+          const msg = JSON.stringify(data.responses[0].error || data.error, null, 2);
           output.innerText = "API Error: " + msg;
           return;
         }
@@ -64,27 +69,28 @@
         fullTextBox.value = text;
 
         const nameLine = findNameLine(text);
-        output.innerText = nameLine ? `Extracted Name: ${nameLine}` : "Could not find a clean name line.";
+        output.innerText = nameLine
+          ? `Extracted Name: ${nameLine}`
+          : "Could not find a clean name line.";
 
       } catch (err) {
         output.innerText = "Fetch Error: " + (err.message || "Unknown error");
         console.error(err);
       }
     };
+
     reader.readAsDataURL(file);
   }
 
   function findNameLine(text) {
     const lines = text.split('\n').map(line => line.trim());
 
-    // Try to match known labels
     for (let line of lines) {
       if (/^(Name|Full Name|NAME|FULL NAME)/i.test(line)) {
         return line.replace(/^(Name|Full Name|NAME|FULL NAME)\s*[:\-]?\s*/i, '');
       }
     }
 
-    // Fallback to name-like line
     return lines.find(line =>
       /^[A-Za-z ]+$/.test(line) &&
       line.split(" ").length >= 2 &&
